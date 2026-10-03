@@ -1,0 +1,47 @@
+# SGMH-SLAM Siamese GNN baseline configuration
+# Update dataset paths and any dataset-specific dimensions before training or inference.
+
+dataset:
+  train_path: "data/processed/train"  # TODO: replace with actual training dataset path
+  val_path: "data/processed/val"      # TODO: replace with actual validation dataset path
+  test_path: "data/processed/test"    # TODO: replace with actual test dataset path
+  num_hypotheses: 5
+
+model:
+  input_dim: 3           # TODO: set to the actual node feature dimensionality in the dataset
+  hidden_dim: 32
+  embedding_dim: 16
+  num_layers: 2
+  pooling: "mean"       # supported: mean, sum, max, mean_max
+  dropout: 0.0
+  activation: "relu"    # supported: relu, leaky_relu, elu, tanh, gelu
+  comparison_features: false  # set to true if raw feature concatenation is desired
+
+similarity_mlp:
+  hidden_dims: [64, 32]
+  dropout: 0.0
+
+training:
+  epochs: 100
+  batch_size: 32
+  learning_rate: 1.0e-3
+  weight_decay: 1.0e-4
+  optimizer: "adam"
+  scheduler: "cosine_annealing"   # or null / none if no scheduler is used
+  early_stopping_patience: 10
+
+loss:
+  type: "combined"
+  ranking_weight: 0.5
+  similarity_weight: 0.5
+  ranking_margin: 0.1
+
+reproducibility:
+  seed: 42
+
+hardware:
+  device: "cuda"  # use "cpu" for CPU-only systems, or "cuda" when available
+
+logging:
+  checkpoint_dir: "checkpoints/baseline_siamese"
+  experiment_name: "sgmh_siamese_baseline"
