@@ -1,0 +1,45 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Local Python environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE and editor state
+.vscode/
+.idea/
+
+# Build and package output
+/build/
+/dist/
+*.egg-info/
+
+# Training and experiment artifacts
+/checkpoints/
+/runs/
+/results/
+*.log
+
+# Generated graph archives and pair manifests; preserve data/splits/
+/data/**/*.npz
+/data/**/train_pairs.csv
+/data/**/val_pairs.csv
+/data/**/test_pairs.csv
+/data/sanity10/
+/data/full_synthetic_benchmark/
+
+# Local secrets and private keys
+.env
+.env.*
+!.env.example
+*.pem
+*.key

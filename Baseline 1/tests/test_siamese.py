@@ -9,29 +9,29 @@ def make_graph(num_nodes: int, num_edges: int, feature_dim: int = 4, seed: int =
     generator = torch.Generator().manual_seed(seed)
     x = torch.randn(num_nodes, feature_dim, generator=generator)
 
-    edges = []
-    for i in range(num_nodes - 1):
-        edges.extend([[i, i + 1], [i + 1, i]])
-
-    if num_nodes >= 3:
-        edges.extend([[0, 2], [2, 0]])
-
-    if num_edges > len(edges) // 2:
-        extra_edges = []
-        for i in range(num_nodes):
-            for j in range(i + 1, num_nodes):
-                if len(extra_edges) >= num_edges - len(edges) // 2:
-                    break
-                extra_edges.append([i, j])
-                extra_edges.append([j, i])
-            if len(extra_edges) >= num_edges - len(edges) // 2:
-                break
-        edges.extend(extra_edges)
-
-    if len(edges) < 2 * num_edges:
+    if num_edges < 0:
         raise ValueError(f"Could not build {num_edges} edges for {num_nodes} nodes.")
 
-    edge_index = torch.tensor(edges[: 2 * num_edges], dtype=torch.long).t().contiguous()
+    undirected_edges = [(i, i + 1) for i in range(num_nodes - 1)]
+    if num_nodes >= 3:
+        undirected_edges.append((0, 2))
+
+    seen_edges = set(undirected_edges)
+    for i in range(num_nodes):
+        for j in range(i + 1, num_nodes):
+            if (i, j) not in seen_edges:
+                undirected_edges.append((i, j))
+                seen_edges.add((i, j))
+
+    if num_edges and not undirected_edges:
+        raise ValueError(f"Could not build {num_edges} edges for {num_nodes} nodes.")
+
+    directed_edges = []
+    for index in range(num_edges):
+        source, destination = undirected_edges[index % len(undirected_edges)]
+        directed_edges.extend(((source, destination), (destination, source)))
+
+    edge_index = torch.tensor(directed_edges, dtype=torch.long).view(-1, 2).t().contiguous()
     return Data(x=x, edge_index=edge_index)
 
 

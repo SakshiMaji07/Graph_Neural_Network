@@ -20,7 +20,7 @@ from datetime import datetime
 from typing import Any, Iterable, Optional
 
 import torch
-from torch_geometric.data import Data
+from torch_geometric.data import Batch, Data
 
 NODE_FEATURE_DIM: int = 8
 EDGE_ATTR_DIM: int = 3
@@ -87,8 +87,8 @@ class GraphData(Data):
 
     def __init__(
         self,
-        x: torch.Tensor,
-        edge_index: torch.Tensor,
+        x: torch.Tensor | None = None,
+        edge_index: torch.Tensor | None = None,
         edge_attr: Optional[torch.Tensor] = None,
         graph_metadata: Optional[GraphMetadata] = None,
         **kwargs: Any,
@@ -100,6 +100,8 @@ class GraphData(Data):
             graph_metadata=graph_metadata,
             **kwargs,
         )
+        if isinstance(self, Batch) and x is None and edge_index is None:
+            return
         validate_graph_data(self)
 
 

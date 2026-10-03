@@ -77,13 +77,21 @@ def collate_graph_pairs(batch: Sequence[Mapping[str, Any] | Any]) -> dict[str, A
 
     for idx, item in enumerate(batch):
         if isinstance(item, Mapping):
-            hypothesis_graph = item.get("graph_hypothesis")
-            ground_truth_graph = item.get("graph_ground_truth")
-            target = item.get("similarity_target")
+            hypothesis_graph = item.get("graph_hypothesis", item.get("graph_a"))
+            ground_truth_graph = item.get("graph_ground_truth", item.get("graph_b"))
+            target = item.get("similarity_target", item.get("target"))
             item_metadata = item.get("metadata")
         else:
-            hypothesis_graph = getattr(item, "graph_hypothesis", None)
-            ground_truth_graph = getattr(item, "graph_ground_truth", None)
+            hypothesis_graph = getattr(
+                item,
+                "graph_hypothesis",
+                getattr(item, "graph_a", None),
+            )
+            ground_truth_graph = getattr(
+                item,
+                "graph_ground_truth",
+                getattr(item, "graph_b", None),
+            )
             target = getattr(item, "similarity_target", None)
             item_metadata = getattr(item, "metadata", None)
 

@@ -23,6 +23,7 @@ import numpy as np
 import torch
 
 from src.data.graph_loader import GraphLoader
+from src.data.preprocessing import similarity_targets_from_metadata
 from src.evaluation.metrics import mae, rmse, spearman_rank_correlation, top1_selection_accuracy
 from src.models.siamese_gnn import SiameseGNN
 
@@ -65,7 +66,10 @@ def load_model(checkpoint_path: str | Path, config: dict[str, Any], device: torc
     ckpt = torch.load(checkpoint, map_location=device)
     state_dict = ckpt.get("model_state_dict", ckpt)
 
-    model_cfg = config.get("model", {})
+    checkpoint_config = ckpt.get("config")
+    effective_config = checkpoint_config if isinstance(checkpoint_config, dict) else config
+    model_cfg = effective_config.get("model", {})
+    mlp_cfg = effective_config.get("similarity_mlp", {})
     model = SiameseGNN(
         input_dim=int(model_cfg.get("input_dim", 3)),
         hidden_dim=int(model_cfg.get("hidden_dim", 32)),
@@ -75,7 +79,7 @@ def load_model(checkpoint_path: str | Path, config: dict[str, Any], device: torc
         activation=str(model_cfg.get("activation", "relu")),
         conv_type=str(model_cfg.get("conv_type", "gcn")),
         pooling=str(model_cfg.get("pooling", "mean")),
-        mlp_hidden_dims=model_cfg.get("mlp_hidden_dims", [64, 32]),
+        mlp_hidden_dims=mlp_cfg.get("hidden_dims", model_cfg.get("mlp_hidden_dims", [64, 32])),
         include_raw_features=bool(model_cfg.get("include_raw_features", False)),
     )
 
@@ -92,7 +96,13 @@ def _ensure_graph_pair(graph: Any, name: str) -> Any:
     return graph
 
 
-def evaluate_scenario(model: torch.nn.Module, hypothesis_graphs: list[Any], gt_graph: Any, device: torch.device) -> dict[str, Any]:
+def evaluate_scenario(
+    model: torch.nn.Module,
+    hypothesis_graphs: list[Any],
+    gt_graph: Any,
+    device: torch.device,
+    target_scores: list[float],
+) -> dict[str, Any]:
     """Evaluate one scenario by comparing each hypothesis to the ground-truth graph.
 
     Returns a dictionary with the target values, predicted values, selected indices, and
@@ -100,12 +110,13 @@ def evaluate_scenario(model: torch.nn.Module, hypothesis_graphs: list[Any], gt_g
     """
     if len(hypothesis_graphs) != 5:
         raise ValueError(f"Expected exactly 5 hypothesis graphs, got {len(hypothesis_graphs)}.")
+    if len(target_scores) != 5:
+        raise ValueError(f"Expected exactly 5 target similarities, got {len(target_scores)}.")
 
     gt_graph = _ensure_graph_pair(gt_graph, "ground truth")
     gt_graph = gt_graph.to(device)
 
     predicted_scores = []
-    target_scores = []
 
     for index, hypothesis in enumerate(hypothesis_graphs):
         hypothesis_graph = _ensure_graph_pair(hypothesis, f"hypothesis {index + 1}")
@@ -120,13 +131,16 @@ def evaluate_scenario(model: torch.nn.Module, hypothesis_graphs: list[Any], gt_g
                 )
             predicted_scores.append(float(score.item()))
 
-        target_scores.append(float(0.0))
-
     target_scores_arr = np.asarray(target_scores, dtype=np.float64)
     predicted_scores_arr = np.asarray(predicted_scores, dtype=np.float64)
 
-    target_best = int(np.argmax(target_scores_arr))
-    predicted_best = int(np.argmax(predicted_scores_arr))
+    if not np.isfinite(target_scores_arr).all() or np.any(
+        (target_scores_arr < 0.0) | (target_scores_arr > 1.0)
+    ):
+        raise ValueError("Target similarities must be finite values in [0, 1].")
+
+    target_best = int(np.argmax(target_scores_arr)) + 1
+    predicted_best = int(np.argmax(predicted_scores_arr)) + 1
     correct = int(predicted_best == target_best)
 
     return {
@@ -139,12 +153,10 @@ def evaluate_scenario(model: torch.nn.Module, hypothesis_graphs: list[Any], gt_g
 
 
 def load_scenario_files(data_dir: str | Path) -> Iterable[dict[str, Any]]:
-    """Load all scenarios from the provided dataset directory.
+    """Discover scene folders containing the six required graphs and pose metadata.
 
-    The expected directory structure is a collection of scenario folders, each containing:
-      - gt_graph.pt or gt_graph.pkl
-      - h1.pt, h2.pt, h3.pt, h4.pt, h5.pt
-    The function returns a list of dictionaries with the scenario identifier and file paths.
+    Each scene directory must contain ``gt.npz``, ``h1.npz`` through ``h5.npz``,
+    and ``metadata.json``. The metadata supplies pose labels only; it is not model input.
     """
     data_path = Path(data_dir)
     if not data_path.exists():
@@ -155,28 +167,23 @@ def load_scenario_files(data_dir: str | Path) -> Iterable[dict[str, Any]]:
         if not item.is_dir():
             continue
 
-        gt_candidates = [item / "gt_graph.pt", item / "gt_graph.pkl", item / "ground_truth.pt"]
-        gt_path = next((path for path in gt_candidates if path.exists()), None)
-        if gt_path is None:
-            continue
-
-        hypothesis_paths = []
+        gt_path = item / "gt.npz"
+        metadata_path = item / "metadata.json"
+        for required_path in (gt_path, metadata_path):
+            if not required_path.is_file():
+                raise FileNotFoundError(f"Missing required scene file: {required_path}")
+        hypothesis_paths: list[Path] = []
         for idx in range(1, 6):
-            candidate_paths = [
-                item / f"h{idx}.pt",
-                item / f"h{idx}.pkl",
-                item / f"hypothesis_{idx}.pt",
-                item / f"hypothesis_{idx}.pkl",
-            ]
-            found = next((path for path in candidate_paths if path.exists()), None)
-            if found is None:
-                raise FileNotFoundError(f"Missing hypothesis {idx} for scenario {item.name}.")
-            hypothesis_paths.append(found)
+            hypothesis_path = item / f"h{idx}.npz"
+            if not hypothesis_path.is_file():
+                raise FileNotFoundError(f"Missing hypothesis graph: {hypothesis_path}")
+            hypothesis_paths.append(hypothesis_path)
 
         scenarios.append({
             "scenario_id": item.name,
             "ground_truth": gt_path,
             "hypotheses": hypothesis_paths,
+            "metadata": metadata_path,
         })
 
     if not scenarios:
@@ -186,23 +193,12 @@ def load_scenario_files(data_dir: str | Path) -> Iterable[dict[str, Any]]:
 
 
 def load_graph_from_path(path: str | Path) -> Any:
-    """Load a graph object from disk using the project graph loader.
-
-    The loader supports the project-specific graph serialization format and falls back to
-    PyTorch's state-dict handling when needed.
-    """
+    """Load a graph object from disk using the project's graph loader."""
     graph_path = Path(path)
     if not graph_path.exists():
         raise FileNotFoundError(f"Graph file not found: {graph_path}")
 
-    graph_loader = GraphLoader(normalize=False)
-    try:
-        return graph_loader.load(graph_path)
-    except Exception:
-        try:
-            return torch.load(graph_path, map_location="cpu")
-        except Exception as exc:  # pragma: no cover
-            raise RuntimeError(f"Unable to load graph from {graph_path}.") from exc
+    return GraphLoader(normalize=False).load(graph_path)
 
 
 def evaluate_dataset(
@@ -212,6 +208,8 @@ def evaluate_dataset(
     device: torch.device,
     *,
     seed: int = 0,
+    sigma_translation: float = 1.0,
+    sigma_rotation: float = 1.0,
 ) -> dict[str, float]:
     """Evaluate the full dataset and write per-scenario results to CSV.
 
@@ -229,8 +227,23 @@ def evaluate_dataset(
     for scenario in load_scenario_files(data_dir):
         gt_graph = load_graph_from_path(scenario["ground_truth"])
         hypotheses = [load_graph_from_path(path) for path in scenario["hypotheses"]]
+        with Path(scenario["metadata"]).open("r", encoding="utf-8") as stream:
+            scene_metadata = json.load(stream)
+        if not isinstance(scene_metadata, dict):
+            raise ValueError(f"Scene metadata must be a JSON object: {scenario['metadata']}")
+        target_scores = similarity_targets_from_metadata(
+            scene_metadata,
+            sigma_translation=sigma_translation,
+            sigma_rotation=sigma_rotation,
+        )
 
-        result = evaluate_scenario(model, hypotheses, gt_graph, device)
+        result = evaluate_scenario(
+            model,
+            hypotheses,
+            gt_graph,
+            device,
+            target_scores=target_scores,
+        )
         target_scores = result["target_scores"]
         predicted_scores = result["predicted_scores"]
 
@@ -239,7 +252,7 @@ def evaluate_dataset(
         correct_flags.append(int(result["correct"]))
 
         row = {
-            "scenario_id": scenario["scenario_id"],
+            "scene_id": scenario["scenario_id"],
             "target_h1": float(target_scores[0]),
             "target_h2": float(target_scores[1]),
             "target_h3": float(target_scores[2]),
@@ -261,7 +274,7 @@ def evaluate_dataset(
 
     with open(output_csv, "w", newline="", encoding="utf-8") as csvfile:
         fieldnames = [
-            "scenario_id",
+            "scene_id",
             "target_h1",
             "target_h2",
             "target_h3",
@@ -292,6 +305,7 @@ def evaluate_dataset(
             np.stack(all_predictions, axis=0),
         ),
         "accuracy": float(np.mean(correct_flags)),
+        "random_baseline_accuracy": 0.2,
     }
     return metrics
 
@@ -314,12 +328,17 @@ def main() -> None:
     device = torch.device(args.device)
     config = load_config(args.config)
     model = load_model(args.checkpoint, config, device)
+    target_config = config.get("similarity_target", {})
+    if not isinstance(target_config, dict):
+        raise ValueError("Configuration section 'similarity_target' must be a mapping.")
     metrics = evaluate_dataset(
         model=model,
         data_dir=args.data,
         output_csv=args.output,
         device=device,
         seed=args.seed,
+        sigma_translation=float(target_config.get("sigma_translation", 1.0)),
+        sigma_rotation=float(target_config.get("sigma_rotation", 1.0)),
     )
 
     print("Evaluation complete:")

@@ -110,6 +110,7 @@ class Trainer:
         self.epochs_without_improvement = 0
         self.epoch_metrics: list[dict[str, float | int]] = []
         self.training_history: dict[str, list[float]] = {"train_loss": [], "val_loss": [], "lr": []}
+        self.checkpoint_config: dict[str, Any] | None = None
 
         self._log(f"Trainer initialized on device: {self.device}")
         self._log(f"Optimizer: {type(self.optimizer).__name__}")
@@ -257,7 +258,7 @@ class Trainer:
         """Run one training epoch over the full training dataloader."""
         self.model.train()
         epoch_total_loss = 0.0
-        num_batches = 0
+        num_examples = 0
 
         for batch_idx, batch in enumerate(self.train_loader):
             hypothesis, ground_truth, targets = self._prepare_batch(batch)
@@ -284,12 +285,12 @@ class Trainer:
 
             batch_size = targets.shape[0]
             epoch_total_loss += loss.detach().item() * batch_size
-            num_batches += 1
+            num_examples += batch_size
 
-        if num_batches == 0:
+        if num_examples == 0:
             return 0.0
 
-        return epoch_total_loss / num_batches
+        return epoch_total_loss / num_examples
 
     def validate_epoch(self) -> float:
         """Run validation without gradients to avoid leaking validation information into training."""
@@ -298,7 +299,7 @@ class Trainer:
 
         self.model.eval()
         epoch_total_loss = 0.0
-        num_batches = 0
+        num_examples = 0
 
         with torch.no_grad():
             for batch_idx, batch in enumerate(self.val_loader):
@@ -316,12 +317,12 @@ class Trainer:
 
                 batch_size = targets.shape[0]
                 epoch_total_loss += loss.detach().item() * batch_size
-                num_batches += 1
+                num_examples += batch_size
 
-        if num_batches == 0:
+        if num_examples == 0:
             return 0.0
 
-        return epoch_total_loss / num_batches
+        return epoch_total_loss / num_examples
 
     def _maybe_step_scheduler(self, val_loss: float) -> None:
         """Update schedulers after each epoch. Plateau schedulers use validation loss."""
@@ -345,6 +346,7 @@ class Trainer:
             "best_val_loss": self.best_val_loss,
             "history": self.training_history,
             "seed": int(torch.random.initial_seed()),
+            "config": self.checkpoint_config,
         }
 
         if is_best:

@@ -1,25 +1,31 @@
 # SGMH-SLAM Siamese GNN baseline configuration
-# Update dataset paths and any dataset-specific dimensions before training or inference.
+# Dataset directories contain one folder per scene, with gt.npz, h1.npz-h5.npz,
+# and metadata.json. Training and validation must contain disjoint scene IDs.
 
 dataset:
-  train_path: "data/processed/train"  # TODO: replace with actual training dataset path
-  val_path: "data/processed/val"      # TODO: replace with actual validation dataset path
-  test_path: "data/processed/test"    # TODO: replace with actual test dataset path
+  train_path: "data/processed/train"
+  val_path: "data/processed/val"
+  test_path: "data/processed/test"
   num_hypotheses: 5
 
 model:
-  input_dim: 3           # TODO: set to the actual node feature dimensionality in the dataset
-  hidden_dim: 32
-  embedding_dim: 16
+  input_dim: 8
+  hidden_dim: 64
+  embedding_dim: 64
   num_layers: 2
-  pooling: "mean"       # supported: mean, sum, max, mean_max
+  conv_type: "sage"
+  pooling: "mean"
   dropout: 0.0
-  activation: "relu"    # supported: relu, leaky_relu, elu, tanh, gelu
-  comparison_features: false  # set to true if raw feature concatenation is desired
+  activation: "relu"
+  comparison_features: false
 
 similarity_mlp:
   hidden_dims: [64, 32]
   dropout: 0.0
+
+similarity_target:
+  sigma_translation: 1.0
+  sigma_rotation: 1.0
 
 training:
   epochs: 100
@@ -31,10 +37,7 @@ training:
   early_stopping_patience: 10
 
 loss:
-  type: "combined"
-  ranking_weight: 0.5
-  similarity_weight: 0.5
-  ranking_margin: 0.1
+  type: "mse"
 
 reproducibility:
   seed: 42

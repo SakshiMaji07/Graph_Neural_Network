@@ -1,0 +1,31 @@
+experiment:
+  name: siamese_gnn_baseline
+
+data:
+  num_hypotheses: 5
+
+model:
+  gnn:
+    type: sage
+    hidden_dim: 128
+    embedding_dim: 128
+    num_layers: 3
+    dropout: 0.2
+
+  pooling:
+    type: mean_max
+
+  similarity:
+    hidden_dim: 128
+    dropout: 0.2
+
+training:
+  batch_size: 32
+  epochs: 100
+  lr: 0.001
+  weight_decay: 0.00001
+
+loss:
+  similarity: smooth_l1
+  similarity_weight: 1.0
+  ranking_weight: 0.0

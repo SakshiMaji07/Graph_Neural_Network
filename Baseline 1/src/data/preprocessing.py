@@ -15,7 +15,7 @@ model logic.
 from __future__ import annotations
 
 from math import cos, pi, sin, sqrt
-from typing import Iterable, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
 
@@ -200,10 +200,62 @@ def similarity_targets_for_hypotheses(
     return scores
 
 
+def similarity_targets_from_metadata(
+    metadata: Mapping[str, Any],
+    sigma_translation: float = 1.0,
+    sigma_rotation: float = 1.0,
+) -> list[float]:
+    """Compute five targets from current or legacy scene pose metadata."""
+
+    ground_truth = metadata.get("gt_pose", metadata.get("ground_truth"))
+    hypotheses = metadata.get("hypotheses")
+    if not isinstance(ground_truth, Mapping):
+        raise ValueError("Scene metadata must contain a 'gt_pose' pose mapping.")
+    if "position" not in ground_truth or "rotation" not in ground_truth:
+        raise ValueError("'gt_pose' must contain 'position' and 'rotation'.")
+
+    hypothesis_positions: list[Any] = []
+    hypothesis_rotations: list[Any] = []
+    if isinstance(hypotheses, Mapping):
+        ordered_hypotheses = [hypotheses.get(f"h{index}") for index in range(1, 6)]
+        if any(hypothesis is None for hypothesis in ordered_hypotheses):
+            raise ValueError("'hypotheses' must contain h1 through h5.")
+        for index, hypothesis in enumerate(ordered_hypotheses, start=1):
+            if not isinstance(hypothesis, Mapping) or not isinstance(hypothesis.get("pose"), Mapping):
+                raise ValueError(f"Hypothesis h{index} metadata must contain a 'pose' mapping.")
+            pose = hypothesis["pose"]
+            if "position" not in pose or "rotation" not in pose:
+                raise ValueError(f"Hypothesis h{index} pose must contain 'position' and 'rotation'.")
+            hypothesis_positions.append(pose["position"])
+            hypothesis_rotations.append(pose["rotation"])
+    elif isinstance(hypotheses, list) and len(hypotheses) == 5:
+        for index, hypothesis in enumerate(hypotheses, start=1):
+            if not isinstance(hypothesis, Mapping):
+                raise ValueError(f"Hypothesis {index} metadata must be a pose mapping.")
+            if "position" not in hypothesis or "rotation" not in hypothesis:
+                raise ValueError(
+                    f"Hypothesis {index} metadata must contain 'position' and 'rotation'."
+                )
+            hypothesis_positions.append(hypothesis["position"])
+            hypothesis_rotations.append(hypothesis["rotation"])
+    else:
+        raise ValueError("'hypotheses' must be a mapping with h1-h5 or a five-pose list.")
+
+    return similarity_targets_for_hypotheses(
+        ground_truth_position=ground_truth["position"],
+        ground_truth_rotation=ground_truth["rotation"],
+        hypothesis_positions=hypothesis_positions,
+        hypothesis_rotations=hypothesis_rotations,
+        sigma_translation=sigma_translation,
+        sigma_rotation=sigma_rotation,
+    )
+
+
 __all__ = [
     "_wrap_angle",
     "translation_error",
     "rotation_error",
     "pose_similarity",
     "similarity_targets_for_hypotheses",
+    "similarity_targets_from_metadata",
 ]

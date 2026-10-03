@@ -1,0 +1,49 @@
+# Full 800/200/200 synthetic baseline; benchmark generated with seed 42.
+dataset:
+  train_manifest: "data/full_synthetic_benchmark/train_pairs.csv"
+  val_manifest: "data/full_synthetic_benchmark/val_pairs.csv"
+  num_hypotheses: 5
+  normalize: false
+  strict: true
+
+model:
+  input_dim: 8
+  hidden_dim: 64
+  embedding_dim: 64
+  num_layers: 2
+  conv_type: "sage"
+  pooling: "mean"
+  dropout: 0.0
+  activation: "relu"
+  comparison_features: false
+
+similarity_mlp:
+  hidden_dims: [64, 32]
+  dropout: 0.0
+
+similarity_target:
+  sigma_translation: 1.0
+  sigma_rotation: 1.0
+
+training:
+  epochs: 100
+  batch_size: 32
+  learning_rate: 1.0e-3
+  weight_decay: 1.0e-4
+  optimizer: "adam"
+  scheduler: "cosine_annealing"
+  early_stopping_patience: 15
+
+loss:
+  type: "mse"
+
+reproducibility:
+  seed: 42
+
+hardware:
+  device: "auto"
+
+logging:
+  checkpoint_dir: "checkpoints"
+  checkpoint_name: "baseline_best.pt"
+  experiment_name: "sgmh_siamese_full_baseline"

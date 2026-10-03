@@ -237,6 +237,15 @@ Additional flags may include:
 
 The baseline configuration should be used first to establish a reference. Advanced configurations can then be compared against it under identical training conditions.
 
+For the baseline, each split directory contains one folder per scene. Each scene
+folder contains `gt.npz`, `h1.npz` through `h5.npz`, and `metadata.json`. The graph
+archives use the GraphLoader schema (`node_features`, `edge_index`, and optional
+`edge_attr`). Pose labels are read only from metadata in the form
+`ground_truth: {position, rotation}` and a five-item `hypotheses` list containing
+the corresponding pose mappings. Training and validation scenes must be disjoint;
+the training script checks scene and hypothesis identifiers in pair manifests as
+well.
+
 ## Evaluation
 
 Evaluation focuses on whether the system correctly selects the best hypothesis among the five candidates. The main evaluation metric is the final selection accuracy:

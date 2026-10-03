@@ -1,0 +1,47 @@
+dataset:
+  train_path: "data/sanity10/train"
+  val_path: "data/sanity10/val"
+  test_path: "data/sanity10/test"
+  num_hypotheses: 5
+
+model:
+  input_dim: 8
+  hidden_dim: 64
+  embedding_dim: 64
+  num_layers: 2
+  conv_type: "sage"
+  pooling: "mean"
+  dropout: 0.0
+  activation: "relu"
+  comparison_features: false
+
+similarity_mlp:
+  hidden_dims: [64, 32]
+  dropout: 0.0
+
+similarity_target:
+  sigma_translation: 1.0
+  sigma_rotation: 1.0
+
+training:
+  epochs: 400
+  batch_size: 16
+  learning_rate: 1.0e-3
+  weight_decay: 0.0
+  optimizer: "adam"
+  scheduler: null
+  early_stopping: false
+  early_stopping_patience: 400
+
+loss:
+  type: "mse"
+
+reproducibility:
+  seed: 42
+
+hardware:
+  device: "cpu"
+
+logging:
+  checkpoint_dir: "checkpoints/sanity10"
+  experiment_name: "sgmh_siamese_sanity10"
